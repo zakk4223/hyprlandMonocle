@@ -1,0 +1,11 @@
+[repository]
+name = "hyprlandMonocle"
+authors = ["Zakk"]
+
+[hyprlandMonocle]
+description = "Monocle layout"
+authors = ["Zakk"]
+output = "monocleLayoutPlugin.so"
+build = [
+	"make all"
+]
