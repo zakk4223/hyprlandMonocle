@@ -88,9 +88,9 @@ void CHyprMonocleLayout::onWindowRemovedTiling(PHLWINDOW pWindow) {
     if (!PNODE)
         return;
 
-    pWindow->m_sSpecialRenderData.rounding = true;
-    pWindow->m_sSpecialRenderData.border   = true;
-    pWindow->m_sSpecialRenderData.decorate = true;
+    pWindow->unsetWindowData(PRIORITY_LAYOUT);
+    pWindow->updateWindowData();
+
 
     if (pWindow->m_bIsFullscreen)
         g_pCompositor->setWindowFullscreen(pWindow, false, FULLSCREEN_FULL);
@@ -183,7 +183,8 @@ void CHyprMonocleLayout::applyNodeDataToWindow(SMonocleNodeData* pNode) {
 		if (PWINDOW->m_bIsFullscreen && !pNode->ignoreFullscreenChecks)
 			return;
 
-		PWINDOW->updateSpecialRenderData();
+    PWINDOW->unsetWindowData(PRIORITY_LAYOUT);
+    PWINDOW->updateWindowData();
 		
 
 		
@@ -216,9 +217,9 @@ void CHyprMonocleLayout::applyNodeDataToWindow(SMonocleNodeData* pNode) {
     auto       calcPos  = PWINDOW->m_vPosition;
     auto       calcSize = PWINDOW->m_vSize;
 
-    const auto OFFSETTOPLEFT = Vector2D(DISPLAYLEFT ? gapsOut.left : gapsIn.left, DISPLAYTOP ? gapsOut.top : gapsIn.top);
+    const auto OFFSETTOPLEFT = Vector2D((double)(DISPLAYLEFT ? gapsOut.left : gapsIn.left), (double)(DISPLAYTOP ? gapsOut.top : gapsIn.top));
 
-    const auto OFFSETBOTTOMRIGHT = Vector2D(DISPLAYRIGHT ? gapsOut.right : gapsIn.right, DISPLAYBOTTOM ? gapsOut.bottom : gapsIn.bottom);
+    const auto OFFSETBOTTOMRIGHT = Vector2D((double)(DISPLAYRIGHT ? gapsOut.right : gapsIn.right), (double)(DISPLAYBOTTOM ? gapsOut.bottom : gapsIn.bottom));
 
     calcPos  = calcPos + OFFSETTOPLEFT;
     calcSize = calcSize - OFFSETTOPLEFT - OFFSETBOTTOMRIGHT;
@@ -284,9 +285,8 @@ void CHyprMonocleLayout::fullscreenRequestForWindow(PHLWINDOW pWindow, eFullscre
             pWindow->m_vRealPosition = pWindow->m_vLastFloatingPosition;
             pWindow->m_vRealSize     = pWindow->m_vLastFloatingSize;
 
-            pWindow->m_sSpecialRenderData.rounding = true;
-            pWindow->m_sSpecialRenderData.border   = true;
-            pWindow->m_sSpecialRenderData.decorate = true;
+            pWindow->unsetWindowData(PRIORITY_LAYOUT);
+            pWindow->updateWindowData();
         }
     } else {
         // if it now got fullscreen, make it fullscreen
