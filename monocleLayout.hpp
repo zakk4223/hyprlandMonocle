@@ -34,7 +34,7 @@ class CHyprMonocleLayout : public IHyprLayout {
     virtual void                     recalculateMonitor(const int&);
     virtual void                     recalculateWindow(PHLWINDOW);
     virtual void                     resizeActiveWindow(const Vector2D&, eRectCorner corner, PHLWINDOW pWindow = nullptr);
-    virtual void                     fullscreenRequestForWindow(PHLWINDOW, eFullscreenMode, bool);
+    virtual void                     fullscreenRequestForWindow(PHLWINDOW, const eFullscreenMode, const eFullscreenMode);
     virtual std::any                 layoutMessage(SLayoutMessageHeader, std::string);
     virtual SWindowRenderLayoutHints requestRenderHints(PHLWINDOW);
     virtual void                     switchWindows(PHLWINDOW, PHLWINDOW);

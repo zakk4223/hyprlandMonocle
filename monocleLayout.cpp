@@ -1,3 +1,4 @@
+#include "monocleLayout.hpp"
 #include <hyprland/src/Compositor.hpp>
 #include <hyprland/src/desktop/DesktopTypes.hpp>
 #include <hyprland/src/desktop/Workspace.hpp>
@@ -5,7 +6,6 @@
 #include <hyprland/src/render/decorations/CHyprGroupBarDecoration.hpp>
 #include <format>
 #include <hyprland/src/render/decorations/IHyprWindowDecoration.hpp>
-#include "monocleLayout.hpp"
 
 
 SMonocleNodeData* CHyprMonocleLayout::getNodeFromWindow(PHLWINDOW pWindow) {
@@ -74,11 +74,11 @@ void CHyprMonocleLayout::onWindowCreatedTiling(PHLWINDOW pWindow, eDirection dir
 	  PNODE->workspaceID = pWindow->workspaceID();
 	  PNODE->pWindow = pWindow;
     if (g_pCompositor->getWorkspaceByID(WSID)->m_bHasFullscreenWindow) {
-	      g_pCompositor->setWindowFullscreen(g_pCompositor->getFullscreenWindowOnWorkspace(pWindow->workspaceID()), false, FULLSCREEN_FULL);
+	      g_pCompositor->setWindowFullscreenInternal(g_pCompositor->getFullscreenWindowOnWorkspace(pWindow->workspaceID()), FSMODE_FULLSCREEN);
     }
 
     recalculateMonitor(pWindow->m_iMonitorID);
-	  g_pCompositor->setWindowFullscreen(pWindow, true, FULLSCREEN_MAXIMIZED);
+	  g_pCompositor->setWindowFullscreenInternal(pWindow, FSMODE_MAXIMIZED);
 	  g_pCompositor->focusWindow(pWindow);
 }
 
@@ -92,8 +92,8 @@ void CHyprMonocleLayout::onWindowRemovedTiling(PHLWINDOW pWindow) {
     pWindow->updateWindowData();
 
 
-    if (pWindow->m_bIsFullscreen)
-        g_pCompositor->setWindowFullscreen(pWindow, false, FULLSCREEN_FULL);
+    if (pWindow->isFullscreen())
+        g_pCompositor->setWindowFullscreenInternal(pWindow,FSMODE_FULLSCREEN);
 
     m_lMonocleNodesData.remove(*PNODE);
 
@@ -114,8 +114,17 @@ void CHyprMonocleLayout::recalculateMonitor(const int& monid) {
         calculateWorkspace(PMONITOR->activeSpecialWorkspace);
     }
 
+    // calc the WS
+    calculateWorkspace(PWORKSPACE);
+}
+
+void CHyprMonocleLayout::calculateWorkspace(PHLWORKSPACE PWORKSPACE) {
+    if (!PWORKSPACE)
+        return;
+
+    const auto         PMONITOR = g_pCompositor->getMonitorFromID(PWORKSPACE->m_iMonitorID);
     if (PWORKSPACE->m_bHasFullscreenWindow) {
-        if (PWORKSPACE->m_efFullscreenMode == FULLSCREEN_FULL)
+        if (PWORKSPACE->m_efFullscreenMode == FSMODE_FULLSCREEN)
             return;
 
         // massive hack from the fullscreen func
@@ -134,15 +143,6 @@ void CHyprMonocleLayout::recalculateMonitor(const int& monid) {
         return;
     }
 
-    // calc the WS
-    calculateWorkspace(PWORKSPACE);
-}
-
-void CHyprMonocleLayout::calculateWorkspace(PHLWORKSPACE PWORKSPACE) {
-    if (!PWORKSPACE)
-        return;
-
-    const auto         PMONITOR = g_pCompositor->getMonitorFromID(PWORKSPACE->m_iMonitorID);
 	  for(auto &md : m_lMonocleNodesData) {
         if (md.workspaceID != PWORKSPACE->m_iID)
 			    continue;
@@ -180,7 +180,7 @@ void CHyprMonocleLayout::applyNodeDataToWindow(SMonocleNodeData* pNode) {
     const auto PWINDOW = pNode->pWindow.lock();
 		const auto WORKSPACERULE = g_pConfigManager->getWorkspaceRuleFor(g_pCompositor->getWorkspaceByID(PWINDOW->workspaceID()));
 
-		if (PWINDOW->m_bIsFullscreen && !pNode->ignoreFullscreenChecks)
+		if (PWINDOW->isFullscreen() && !pNode->ignoreFullscreenChecks)
 			return;
 
     PWINDOW->unsetWindowData(PRIORITY_LAYOUT);
@@ -252,30 +252,19 @@ void CHyprMonocleLayout::resizeActiveWindow(const Vector2D& pixResize, eRectCorn
 	return;
 }
 
-void CHyprMonocleLayout::fullscreenRequestForWindow(PHLWINDOW pWindow, eFullscreenMode fullscreenMode, bool on) {
-    if (!validMapped(pWindow))
-        return;
-
-    if (on == pWindow->m_bIsFullscreen || g_pCompositor->isWorkspaceSpecial(pWindow->workspaceID()))
-        return; // ignore
-
+void CHyprMonocleLayout::fullscreenRequestForWindow(PHLWINDOW pWindow, const eFullscreenMode CURRENT_EFFECTIVE_MODE, const eFullscreenMode EFFECTIVE_MODE) {
     const auto PMONITOR   = g_pCompositor->getMonitorFromID(pWindow->m_iMonitorID);
-    const auto PWORKSPACE = g_pCompositor->getWorkspaceByID(pWindow->workspaceID());
+    const auto PWORKSPACE = pWindow->m_pWorkspace;
 
-    if (PWORKSPACE->m_bHasFullscreenWindow && on) {
-	      g_pCompositor->setWindowFullscreen(g_pCompositor->getFullscreenWindowOnWorkspace(pWindow->workspaceID()), false, FULLSCREEN_FULL);
+    // save position and size if floating
+    if (pWindow->m_bIsFloating && CURRENT_EFFECTIVE_MODE == FSMODE_NONE) {
+        pWindow->m_vLastFloatingSize     = pWindow->m_vRealSize.goal();
+        pWindow->m_vLastFloatingPosition = pWindow->m_vRealPosition.goal();
+        pWindow->m_vPosition             = pWindow->m_vRealPosition.goal();
+        pWindow->m_vSize                 = pWindow->m_vRealSize.goal();
     }
 
-    // otherwise, accept it.
-    pWindow->m_bIsFullscreen           = on;
-    PWORKSPACE->m_bHasFullscreenWindow = !PWORKSPACE->m_bHasFullscreenWindow;
-
-		pWindow->updateDynamicRules();
-		pWindow->updateWindowDecos();
-    g_pEventManager->postEvent(SHyprIPCEvent{"fullscreen", std::to_string((int)on)});
-    EMIT_HOOK_EVENT("fullscreen", pWindow);
-
-    if (!pWindow->m_bIsFullscreen) {
+    if (EFFECTIVE_MODE == FSMODE_NONE) {
         // if it got its fullscreen disabled, set back its node if it had one
         const auto PNODE = getNodeFromWindow(pWindow);
         if (PNODE)
@@ -289,20 +278,8 @@ void CHyprMonocleLayout::fullscreenRequestForWindow(PHLWINDOW pWindow, eFullscre
             pWindow->updateWindowData();
         }
     } else {
-        // if it now got fullscreen, make it fullscreen
-
-        PWORKSPACE->m_efFullscreenMode = fullscreenMode;
-
-        // save position and size if floating
-        if (pWindow->m_bIsFloating) {
-            pWindow->m_vLastFloatingSize     = pWindow->m_vRealSize.goal();
-            pWindow->m_vLastFloatingPosition = pWindow->m_vRealPosition.goal();
-            pWindow->m_vPosition             = pWindow->m_vRealPosition.goal();
-            pWindow->m_vSize                 = pWindow->m_vRealSize.goal();
-        }
-
         // apply new pos and size being monitors' box
-        if (fullscreenMode == FULLSCREEN_FULL) {
+        if (EFFECTIVE_MODE == FSMODE_FULLSCREEN) {
             pWindow->m_vRealPosition = PMONITOR->vecPosition;
             pWindow->m_vRealSize     = PMONITOR->vecSize;
         } else {
@@ -311,30 +288,24 @@ void CHyprMonocleLayout::fullscreenRequestForWindow(PHLWINDOW pWindow, eFullscre
             // To keep consistent with the settings without C+P code
 
             SMonocleNodeData fakeNode;
-            fakeNode.pWindow     = pWindow;
-            fakeNode.position    = PMONITOR->vecPosition + PMONITOR->vecReservedTopLeft;
-            fakeNode.size        = PMONITOR->vecSize - PMONITOR->vecReservedTopLeft - PMONITOR->vecReservedBottomRight;
-            fakeNode.workspaceID = pWindow->workspaceID();
-            pWindow->m_vPosition = fakeNode.position;
-            pWindow->m_vSize     = fakeNode.size;
-						fakeNode.ignoreFullscreenChecks = true;
+            fakeNode.pWindow                = pWindow;
+            fakeNode.position               = PMONITOR->vecPosition + PMONITOR->vecReservedTopLeft;
+            fakeNode.size                   = PMONITOR->vecSize - PMONITOR->vecReservedTopLeft - PMONITOR->vecReservedBottomRight;
+            fakeNode.workspaceID            = pWindow->workspaceID();
+            pWindow->m_vPosition            = fakeNode.position;
+            pWindow->m_vSize                = fakeNode.size;
+            fakeNode.ignoreFullscreenChecks = true;
 
             applyNodeDataToWindow(&fakeNode);
         }
     }
 
-    g_pCompositor->updateWindowAnimatedDecorationValues(pWindow);
-
-    g_pXWaylandManager->setWindowSize(pWindow, pWindow->m_vRealSize.goal());
-
     //g_pCompositor->changeWindowZOrder(pWindow, true);
-
-    recalculateMonitor(PMONITOR->ID);
 }
 
 void CHyprMonocleLayout::onWindowFocusChange(PHLWINDOW pNewFocus) {
 	IHyprLayout::onWindowFocusChange(pNewFocus);
-	fullscreenRequestForWindow(pNewFocus, FULLSCREEN_MAXIMIZED, true);
+	fullscreenRequestForWindow(pNewFocus, FSMODE_MAXIMIZED, FSMODE_MAXIMIZED);
 }
 
 
@@ -411,7 +382,7 @@ void CHyprMonocleLayout::prepareNewFocus(PHLWINDOW pWindow, bool inheritFullscre
 
 	  Debug::log(LOG, "PREPARE NEW FOCUS {}", pWindow);
     if (inheritFullscreen)
-        g_pCompositor->setWindowFullscreen(pWindow, true, g_pCompositor->getWorkspaceByID(pWindow->workspaceID())->m_efFullscreenMode);
+        g_pCompositor->setWindowFullscreenInternal(pWindow, g_pCompositor->getWorkspaceByID(pWindow->workspaceID())->m_efFullscreenMode);
 }
 
 std::any CHyprMonocleLayout::layoutMessage(SLayoutMessageHeader header, std::string message) {
