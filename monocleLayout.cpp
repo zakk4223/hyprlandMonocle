@@ -101,7 +101,7 @@ void CHyprMonocleLayout::onWindowRemovedTiling(PHLWINDOW pWindow) {
 	  
 }
 
-void CHyprMonocleLayout::recalculateMonitor(const int& monid) {
+void CHyprMonocleLayout::recalculateMonitor(const MONITORID& monid) {
     const auto PMONITOR   = g_pCompositor->getMonitorFromID(monid);
     const auto PWORKSPACE = PMONITOR->activeWorkspace;
 
