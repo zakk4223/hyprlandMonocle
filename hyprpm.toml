@@ -1,6 +1,9 @@
 [repository]
 name = "hyprlandMonocle"
 authors = ["Zakk"]
+commit_pins = [
+  ["0c7a7e2d569eeed9d6025f3eef4ea0690d90845d", "e8dfaf54dbbfa82b4b43949e814665dc2bdae09f" ]
+]
 
 [hyprlandMonocle]
 description = "Monocle layout"
