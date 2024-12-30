@@ -254,6 +254,8 @@ void CHyprMonocleLayout::resizeActiveWindow(const Vector2D& pixResize, eRectCorn
 }
 
 void CHyprMonocleLayout::fullscreenRequestForWindow(PHLWINDOW pWindow, const eFullscreenMode CURRENT_EFFECTIVE_MODE, const eFullscreenMode EFFECTIVE_MODE) {
+    if (!pWindow)
+      return;
     const auto PMONITOR   = pWindow->m_pMonitor.lock(); 
     const auto PWORKSPACE = pWindow->m_pWorkspace;
 
