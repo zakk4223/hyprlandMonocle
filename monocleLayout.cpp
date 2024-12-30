@@ -36,9 +36,10 @@ void CHyprMonocleLayout::onWindowCreatedTiling(PHLWINDOW pWindow, eDirection dir
         return;
 
 		const auto WSID = pWindow->workspaceID();
+    const auto PWORKSPACE = pWindow->m_pWorkspace;
 		
 			
-    const auto         PMONITOR = g_pCompositor->getMonitorFromID(pWindow->m_iMonitorID);
+    const auto         PMONITOR = pWindow->m_pMonitor.lock(); 
 
     auto               OPENINGON = g_pCompositor->m_pLastWindow.lock() && g_pCompositor->m_pLastWindow.lock()->m_pWorkspace == pWindow->m_pWorkspace ? g_pCompositor->m_pLastWindow.lock() : nullptr;
 
@@ -73,11 +74,11 @@ void CHyprMonocleLayout::onWindowCreatedTiling(PHLWINDOW pWindow, eDirection dir
     const auto PNODE = &m_lMonocleNodesData.emplace_front();
 	  PNODE->workspaceID = pWindow->workspaceID();
 	  PNODE->pWindow = pWindow;
-    if (g_pCompositor->getWorkspaceByID(WSID)->m_bHasFullscreenWindow) {
-	      g_pCompositor->setWindowFullscreenInternal(g_pCompositor->getFullscreenWindowOnWorkspace(pWindow->workspaceID()), FSMODE_FULLSCREEN);
+    if (PWORKSPACE->m_bHasFullscreenWindow) {
+	      g_pCompositor->setWindowFullscreenInternal(PWORKSPACE->getFullscreenWindow(), FSMODE_FULLSCREEN);
     }
 
-    recalculateMonitor(pWindow->m_iMonitorID);
+    recalculateMonitor(pWindow->monitorID());
 	  g_pCompositor->setWindowFullscreenInternal(pWindow, FSMODE_MAXIMIZED);
 	  g_pCompositor->focusWindow(pWindow);
 }
@@ -97,7 +98,7 @@ void CHyprMonocleLayout::onWindowRemovedTiling(PHLWINDOW pWindow) {
 
     m_lMonocleNodesData.remove(*PNODE);
 
-    recalculateMonitor(pWindow->m_iMonitorID);
+    recalculateMonitor(pWindow->monitorID());
 	  
 }
 
@@ -122,13 +123,13 @@ void CHyprMonocleLayout::calculateWorkspace(PHLWORKSPACE PWORKSPACE) {
     if (!PWORKSPACE)
         return;
 
-    const auto         PMONITOR = g_pCompositor->getMonitorFromID(PWORKSPACE->m_iMonitorID);
+    const auto         PMONITOR = g_pCompositor->getMonitorFromID(PWORKSPACE->monitorID());
     if (PWORKSPACE->m_bHasFullscreenWindow) {
         if (PWORKSPACE->m_efFullscreenMode == FSMODE_FULLSCREEN)
             return;
 
         // massive hack from the fullscreen func
-        const auto      PFULLWINDOW = g_pCompositor->getFullscreenWindowOnWorkspace(PWORKSPACE->m_iID);
+        const auto      PFULLWINDOW = PWORKSPACE->getFullscreenWindow();
 
         SMonocleNodeData fakeNode;
         fakeNode.pWindow         = PFULLWINDOW;
@@ -163,7 +164,7 @@ void CHyprMonocleLayout::applyNodeDataToWindow(SMonocleNodeData* pNode) {
             }
         }
     } else {
-        PMONITOR = g_pCompositor->getMonitorFromID(g_pCompositor->getWorkspaceByID(pNode->workspaceID)->m_iMonitorID);
+        PMONITOR = g_pCompositor->getWorkspaceByID(pNode->workspaceID)->m_pMonitor.lock(); 
     }
 
     if (!PMONITOR) {
@@ -253,7 +254,7 @@ void CHyprMonocleLayout::resizeActiveWindow(const Vector2D& pixResize, eRectCorn
 }
 
 void CHyprMonocleLayout::fullscreenRequestForWindow(PHLWINDOW pWindow, const eFullscreenMode CURRENT_EFFECTIVE_MODE, const eFullscreenMode EFFECTIVE_MODE) {
-    const auto PMONITOR   = g_pCompositor->getMonitorFromID(pWindow->m_iMonitorID);
+    const auto PMONITOR   = pWindow->m_pMonitor.lock(); 
     const auto PWORKSPACE = pWindow->m_pWorkspace;
 
     // save position and size if floating
@@ -321,7 +322,7 @@ void CHyprMonocleLayout::recalculateWindow(PHLWINDOW pWindow) {
     if (!PNODE)
         return;
 
-    recalculateMonitor(pWindow->m_iMonitorID);
+    recalculateMonitor(pWindow->monitorID());
 }
 
 SWindowRenderLayoutHints CHyprMonocleLayout::requestRenderHints(PHLWINDOW pWindow) {
@@ -346,7 +347,7 @@ void CHyprMonocleLayout::switchWindows(PHLWINDOW pWindow, PHLWINDOW pWindow2) {
     const auto inheritFullscreen = prepareLoseFocus(pWindow);
 
     if (PNODE->workspaceID != PNODE2->workspaceID) {
-        std::swap(pWindow2->m_iMonitorID, pWindow->m_iMonitorID);
+        std::swap(pWindow2->m_pMonitor, pWindow->m_pMonitor);
         std::swap(pWindow2->m_pWorkspace, pWindow->m_pWorkspace);
     }
 
@@ -354,9 +355,9 @@ void CHyprMonocleLayout::switchWindows(PHLWINDOW pWindow, PHLWINDOW pWindow2) {
     PNODE->pWindow  = pWindow2;
     PNODE2->pWindow = pWindow;
 
-    recalculateMonitor(pWindow->m_iMonitorID);
+    recalculateMonitor(pWindow->monitorID());
     if (PNODE2->workspaceID != PNODE->workspaceID)
-        recalculateMonitor(pWindow2->m_iMonitorID);
+        recalculateMonitor(pWindow2->monitorID());
 
     g_pHyprRenderer->damageWindow(pWindow);
     g_pHyprRenderer->damageWindow(pWindow2);
@@ -406,9 +407,9 @@ void CHyprMonocleLayout::moveWindowTo(PHLWINDOW pWindow, const std::string& dir,
  			// if different monitors, send to monitor
 			onWindowRemovedTiling(pWindow);
 			pWindow->moveToWorkspace(PWINDOW2->m_pWorkspace);
-			pWindow->m_iMonitorID = PWINDOW2->m_iMonitorID;
+			pWindow->m_pMonitor = PWINDOW2->m_pMonitor;
 			if (!silent) {
-				const auto pMonitor = g_pCompositor->getMonitorFromID(pWindow->m_iMonitorID);
+				const auto pMonitor = pWindow->m_pMonitor.lock();
 				g_pCompositor->setActiveMonitor(pMonitor);
 			}
 			onWindowCreatedTiling(pWindow);
